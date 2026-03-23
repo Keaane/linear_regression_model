@@ -1,0 +1,13 @@
+{
+  "model": "Random Forest",
+  "test_mse": 125007284.99,
+  "test_r2": 0.9828,
+  "features": [
+    "Area",
+    "Item",
+    "Year",
+    "average_rain_fall_mm_per_year",
+    "pesticides_tonnes",
+    "avg_temp"
+  ]
+}
