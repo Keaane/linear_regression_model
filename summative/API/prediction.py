@@ -66,8 +66,9 @@ def load_artifacts():
     try:
         artifacts.model = joblib.load(os.path.join(ARTIFACTS_DIR, "best_model.pkl"))
         artifacts.scaler = joblib.load(os.path.join(ARTIFACTS_DIR, "scaler.pkl"))
-        artifacts.le_area = joblib.load(os.path.join(ARTIFACTS_DIR, "le_area.pkl"))
-        artifacts.le_item = joblib.load(os.path.join(ARTIFACTS_DIR, "le_item.pkl"))
+        label_encoders = joblib.load(... "label_encoders.pkl")
+        artifacts.le_area = label_encoders['Area']
+        artifacts.le_item = label_encoders['Item']
         with open(os.path.join(ARTIFACTS_DIR, "model_metadata.json"), "r") as f:
             artifacts.metadata = json.load(f)
         print("Model artifacts loaded successfully.")
