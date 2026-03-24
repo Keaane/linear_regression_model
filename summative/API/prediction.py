@@ -17,9 +17,15 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=[
+        "https://crop-yield-predictor-api-nhma.onrender.com",
+        "http://localhost",
+        "http://localhost:8080",
+        "http://127.0.0.1",
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 VALID_AREAS = [
