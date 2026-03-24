@@ -66,12 +66,15 @@ def load_artifacts():
     try:
         artifacts.model = joblib.load(os.path.join(ARTIFACTS_DIR, "best_model.pkl"))
         artifacts.scaler = joblib.load(os.path.join(ARTIFACTS_DIR, "scaler.pkl"))
-        label_encoders = joblib.load(... "label_encoders.pkl")
+
+        # Load from combined label_encoders.pkl
+        label_encoders = joblib.load(os.path.join(ARTIFACTS_DIR, "label_encoders.pkl"))
         artifacts.le_area = label_encoders['Area']
         artifacts.le_item = label_encoders['Item']
+
         with open(os.path.join(ARTIFACTS_DIR, "model_metadata.json"), "r") as f:
             artifacts.metadata = json.load(f)
-        print("Model artifacts loaded successfully.")
+        print(" Model artifacts loaded successfully.")
     except Exception as e:
         print(f"Warning: Failed to load some artifacts: {e}")
 
@@ -90,10 +93,8 @@ class PredictionRequest(BaseModel):
 
     @validator('area')
     def validate_area(cls, v):
-        # Accept exact match first
         if v in VALID_AREAS:
             return v
-        # Try case-insensitive match
         normalized = _AREA_MAP.get(v.lower())
         if normalized:
             return normalized
@@ -104,10 +105,8 @@ class PredictionRequest(BaseModel):
 
     @validator('item')
     def validate_item(cls, v):
-        # Accept exact match first
         if v in VALID_CROPS:
             return v
-        # Try case-insensitive match
         normalized = _CROP_MAP.get(v.lower())
         if normalized:
             return normalized
@@ -135,12 +134,10 @@ def read_root():
 @app.get("/health")
 def health_check():
     status = "healthy" if artifacts.model is not None else "model_missing"
-    r2_score_val = artifacts.metadata.get("r2_score")
-    rmse_val = artifacts.metadata.get("rmse")
     return {
         "status": status,
-        "r2_score": r2_score_val,
-        "rmse": rmse_val,
+        "r2_score": artifacts.metadata.get("r2_score"),
+        "rmse": artifacts.metadata.get("rmse"),
         "valid_crops": VALID_CROPS,
         "timestamp": datetime.datetime.now().isoformat()
     }
@@ -161,14 +158,14 @@ def _make_prediction(req: PredictionRequest) -> float:
         item_enc = artifacts.le_item.transform([req.item])[0]
         
         df_features = pd.DataFrame([[
-            area_enc, 
-            item_enc, 
-            req.year, 
-            req.average_rain_fall_mm_per_year, 
-            req.pesticides_tonnes, 
+            area_enc,
+            item_enc,
+            req.year,
+            req.average_rain_fall_mm_per_year,
+            req.pesticides_tonnes,
             req.avg_temp
         ]], columns=[
-            "Area", "Item", "Year", "average_rain_fall_mm_per_year", 
+            "Area", "Item", "Year", "average_rain_fall_mm_per_year",
             "pesticides_tonnes", "avg_temp"
         ])
         
@@ -221,46 +218,47 @@ def do_retrain(csv_content: bytes):
             df_combined = pd.concat([df_orig, df_new], ignore_index=True)
         else:
             df_combined = df_new
-            
+
         le_area = LabelEncoder()
         df_combined['Area'] = le_area.fit_transform(df_combined['Area'])
-        
+
         le_item = LabelEncoder()
         df_combined['Item'] = le_item.fit_transform(df_combined['Item'])
-        
+
         X = df_combined[['Area', 'Item', 'Year', 'average_rain_fall_mm_per_year', 'pesticides_tonnes', 'avg_temp']]
         y = df_combined['hg/ha_yield']
-        
+
         scaler = StandardScaler()
         X_scaled = scaler.fit_transform(X)
-        
+
         X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
-        
+
         model = RandomForestRegressor(n_estimators=50, max_depth=10, random_state=42, n_jobs=-1)
         model.fit(X_train, y_train)
-        
+
         preds = model.predict(X_test)
         new_r2 = float(r2_score(y_test, preds))
         new_rmse = float(mean_squared_error(y_test, preds, squared=False))
-        
+
         os.makedirs(ARTIFACTS_DIR, exist_ok=True)
         joblib.dump(model, os.path.join(ARTIFACTS_DIR, "best_model.pkl"))
         joblib.dump(scaler, os.path.join(ARTIFACTS_DIR, "scaler.pkl"))
-        joblib.dump(le_area, os.path.join(ARTIFACTS_DIR, "le_area.pkl"))
-        joblib.dump(le_item, os.path.join(ARTIFACTS_DIR, "le_item.pkl"))
-        
+
+        # Save as combined label_encoders.pkl
+        joblib.dump({'Area': le_area, 'Item': le_item}, os.path.join(ARTIFACTS_DIR, "label_encoders.pkl"))
+
         meta = {"r2_score": new_r2, "rmse": new_rmse, "retrained_at": datetime.datetime.now().isoformat()}
         with open(os.path.join(ARTIFACTS_DIR, "model_metadata.json"), "w") as f:
             json.dump(meta, f)
-            
+
         df_combined.to_csv(os.path.join(ARTIFACTS_DIR, "yield_df.csv"), index=False)
-        
+
         artifacts.model = model
         artifacts.scaler = scaler
         artifacts.le_area = le_area
         artifacts.le_item = le_item
         artifacts.metadata = meta
-        print("Retraining completed successfully.")
+        print(" Retraining completed successfully.")
     except Exception as e:
         print(f"Retraining failed: {e}")
 
@@ -274,7 +272,7 @@ async def retrain(background_tasks: BackgroundTasks, file: UploadFile = File(...
             raise HTTPException(status_code=400, detail="Missing required columns in CSV")
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-        
+
     background_tasks.add_task(do_retrain, contents)
     return {"message": "Retraining job started in the background"}
 
@@ -290,6 +288,6 @@ def retrain_stream(background_tasks: BackgroundTasks, data: List[dict]):
         csv_bytes = df.to_csv(index=False).encode('utf-8')
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-    
+
     background_tasks.add_task(do_retrain, csv_bytes)
     return {"message": "Retraining job from stream started in the background"}
