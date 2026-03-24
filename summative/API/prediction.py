@@ -47,6 +47,10 @@ VALID_CROPS = [
     "Sorghum", "Soybeans", "Sweet potatoes", "Wheat", "Yams"
 ]
 
+# Lookup maps for case-insensitive matching
+_AREA_MAP = {a.lower(): a for a in VALID_AREAS}
+_CROP_MAP = {c.lower(): c for c in VALID_CROPS}
+
 ARTIFACTS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "linear_regression")
 
 class ModelArtifacts:
@@ -85,15 +89,31 @@ class PredictionRequest(BaseModel):
 
     @validator('area')
     def validate_area(cls, v):
-        if v not in VALID_AREAS:
-            raise ValueError(f'area must be in valid areas list')
-        return v
+        # Accept exact match first
+        if v in VALID_AREAS:
+            return v
+        # Try case-insensitive match
+        normalized = _AREA_MAP.get(v.lower())
+        if normalized:
+            return normalized
+        raise ValueError(
+            f"Unknown country: '{v}'. "
+            f"See the /areas endpoint for all {len(VALID_AREAS)} supported countries."
+        )
 
     @validator('item')
     def validate_item(cls, v):
-        if v not in VALID_CROPS:
-            raise ValueError(f'item must be in valid crops list')
-        return v
+        # Accept exact match first
+        if v in VALID_CROPS:
+            return v
+        # Try case-insensitive match
+        normalized = _CROP_MAP.get(v.lower())
+        if normalized:
+            return normalized
+        raise ValueError(
+            f"Unknown crop: '{v}'. "
+            f"Valid crops are: {', '.join(sorted(VALID_CROPS))}."
+        )
 
 class PredictionResponse(BaseModel):
     predicted_yield_hg_per_ha: float
@@ -152,7 +172,6 @@ def _make_prediction(req: PredictionRequest) -> float:
         ])
         
         scaled_features = artifacts.scaler.transform(df_features)
-        
         prediction = artifacts.model.predict(scaled_features)[0]
         return round(float(prediction), 2)
     except Exception as e:
