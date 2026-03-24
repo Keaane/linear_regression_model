@@ -13,9 +13,14 @@ linear_regression_model/
 │
 ├── summative/
 │   ├── linear_regression/
-│   │   └── multivariate.ipynb
-│
-├── API/                  # empty for now
-│
-└── FlutterApp/           # empty for now
+│   │   ├── multivariate.ipynb
+│   ├── API/
+│   │   ├── prediction.py
+│   │   ├── requirements.txt
+│   ├── FlutterApp/
 ```
+
+## API Documentation
+The API is deployed on Render and fully documented using Swagger UI. You can test prediction endpoints here:
+👉 [https://your-yield-api.onrender.com/docs](https://your-yield-api.onrender.com/docs)
+*(Make sure to update the domain above when deploying to your Render project!)*
