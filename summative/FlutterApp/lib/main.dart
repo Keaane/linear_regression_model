@@ -94,7 +94,7 @@ class _PredictionPageState extends State<PredictionPage> {
           "avg_temp": double.parse(_tempController.text),
         });
 
-        final url = Uri.parse('https://YOUR-RENDER-URL.onrender.com/predict');
+       final url = Uri.parse('https://crop-yield-predictor-api-nhma.onrender.com/predict');
         
         final response = await http.post(
           url,
