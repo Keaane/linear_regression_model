@@ -193,7 +193,9 @@ class PredictionRequest(BaseModel):
 
 class PredictionResponse(BaseModel):
     """Public response schema shown in OpenAPI/Swagger."""
-    prediction: float = Field(..., description="The predicted yield in hg/ha.")
+    prediction_hg_per_ha: float = Field(..., description="The predicted yield in hg/ha.")
+    prediction_t_per_ha: float = Field(..., description="The predicted yield in tonnes/ha.")
+    prediction_display: str = Field(..., description="Human-friendly display string.")
     area: str
     item: str
     year: int
@@ -204,7 +206,9 @@ class PredictionResponse(BaseModel):
     class Config:
         schema_extra = {
             "example": {
-                "prediction": 51234.56,
+                "prediction_hg_per_ha": 51234.56,
+                "prediction_t_per_ha": 5.1235,
+                "prediction_display": "51,234.56 hg/ha\n5.1235 t/ha",
                 "area": "Rwanda",
                 "item": "Maize",
                 "year": 2020,
@@ -428,7 +432,7 @@ def _make_prediction(req: PredictionRequest) -> float:
         "Predicts crop yield (hg/ha) from location, crop type, and climate inputs. "
         "The request is buffered for optional auto-retraining.\n\n"
         "**Compatibility note:** the JSON response also includes "
-        "`predicted_yield_hg_per_ha` as a legacy alias of `prediction` for older clients."
+        "`prediction` / `predicted_yield_hg_per_ha` as legacy aliases of `prediction_hg_per_ha` for older clients."
     ),
     responses={
         400: {"model": ErrorResponse, "description": "Bad request / prediction failed."},
@@ -461,8 +465,17 @@ def predict(request: PredictionRequest, background_tasks: BackgroundTasks):
     # Check if we've hit the threshold and should retrain
     auto_retrain_if_ready(background_tasks)
 
+    t_per_ha = round(float(pred_val) / 10000.0, 4)
+    display = (
+        f"{pred_val:,.2f} hg/ha\n"
+        f"{t_per_ha:.4f} t/ha"
+    )
+
     payload = {
-        "prediction": pred_val,
+        "prediction_hg_per_ha": pred_val,
+        "prediction_t_per_ha": t_per_ha,
+        "prediction_display": display,
+        "prediction": pred_val,  # legacy alias for older clients
         "predicted_yield_hg_per_ha": pred_val,  # legacy alias for older clients
         "area": request.area,
         "item": request.item,
@@ -487,7 +500,7 @@ class BatchPredictionRequest(BaseModel):
         "Predicts yields for multiple inputs in a single request. "
         "All predictions are buffered for optional auto-retraining.\n\n"
         "**Compatibility note:** each item in the response also includes "
-        "`predicted_yield_hg_per_ha` as a legacy alias of `prediction`."
+        "`prediction` / `predicted_yield_hg_per_ha` as legacy aliases of `prediction_hg_per_ha`."
     ),
     responses={
         400: {"model": ErrorResponse, "description": "Bad request / prediction failed."},
@@ -518,8 +531,17 @@ def predict_batch(request: BatchPredictionRequest, background_tasks: BackgroundT
             "hg/ha_yield":                   pred_val
         })
 
+        t_per_ha = round(float(pred_val) / 10000.0, 4)
+        display = (
+            f"{pred_val:,.2f} hg/ha\n"
+            f"{t_per_ha:.4f} t/ha"
+        )
+
         responses.append({
-            "prediction": pred_val,
+            "prediction_hg_per_ha": pred_val,
+            "prediction_t_per_ha": t_per_ha,
+            "prediction_display": display,
+            "prediction": pred_val,  # legacy alias for older clients
             "predicted_yield_hg_per_ha": pred_val,  # legacy alias for older clients
             "area": p.area,
             "item": p.item,
