@@ -143,12 +143,24 @@ def startup_event():
 # If validation fails, FastAPI automatically returns a 422 error with details.
 
 class PredictionRequest(BaseModel):
-    area: str                                              # country name
-    item: str                                              # crop type
-    year: int   = Field(..., ge=1990, le=2030)             # between 1990–2030
-    average_rain_fall_mm_per_year: float = Field(..., ge=51.0,  le=3240.0)  # mm
-    pesticides_tonnes:             float = Field(..., ge=0.0,   le=400000.0)
-    avg_temp:                      float = Field(..., ge=1.3,   le=30.65)   # °C
+    area: str = Field(
+        "Rwanda",
+        description="Country name (must be one of the values returned by /areas).",
+    )
+    item: str = Field(
+        "Maize",
+        description="Crop type (must be one of the values returned by /crops).",
+    )
+    year: int = Field(2020, ge=1990, le=2030, description="Year (1990–2030).")
+    average_rain_fall_mm_per_year: float = Field(
+        1200.0, ge=51.0, le=3240.0, description="Average annual rainfall in mm."
+    )
+    pesticides_tonnes: float = Field(
+        10.0, ge=0.0, le=400000.0, description="Pesticide usage in tonnes."
+    )
+    avg_temp: float = Field(
+        25.0, ge=1.3, le=30.65, description="Average temperature in °C."
+    )
 
     @validator('area')
     def validate_area(cls, v):
