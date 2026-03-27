@@ -8,7 +8,7 @@ My mission is to harness technology for positive impact, promoting human well-be
 
 ## Dataset
 
-[Crop Yield Prediction Dataset – Kaggle](https://www.kaggle.com/)
+[Crop Yield Prediction Dataset – Kaggle](https://www.kaggle.com/datasets/patelris/crop-yield-prediction-dataset)
 
 ---
 
