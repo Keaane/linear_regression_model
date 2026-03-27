@@ -180,13 +180,31 @@ class PredictionRequest(BaseModel):
 
 class PredictionResponse(BaseModel):
     """What the API returns after a successful prediction."""
-    predicted_yield_hg_per_ha: float  # the main result
+    prediction: float = Field(..., description="The predicted yield (hg/ha).")
+    predicted_yield_hg_per_ha: float = Field(
+        ...,
+        description="Same as `prediction` (kept for backwards compatibility).",
+    )
     area: str
     item: str
     year: int
     model_type: str        # tells the user which model made the prediction
     model_r2_score: float  # so users know how accurate the model is
     timestamp: str         # when the prediction was made
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "prediction": 51234.56,
+                "predicted_yield_hg_per_ha": 51234.56,
+                "area": "Rwanda",
+                "item": "Maize",
+                "year": 2020,
+                "model_type": "Random Forest",
+                "model_r2_score": 0.87,
+                "timestamp": "2026-03-27T12:00:00",
+            }
+        }
 
 
 # ── Basic Endpoints ──────────────────────────────────────────────────────────
@@ -413,6 +431,7 @@ def predict(request: PredictionRequest, background_tasks: BackgroundTasks):
     auto_retrain_if_ready(background_tasks)
 
     return PredictionResponse(
+        prediction=pred_val,
         predicted_yield_hg_per_ha=pred_val,
         area=request.area,
         item=request.item,
@@ -453,6 +472,7 @@ def predict_batch(request: BatchPredictionRequest, background_tasks: BackgroundT
         })
 
         responses.append(PredictionResponse(
+            prediction=pred_val,
             predicted_yield_hg_per_ha=pred_val,
             area=p.area, item=p.item, year=p.year,
             model_type="Random Forest",
