@@ -12,6 +12,7 @@ import datetime
 import pandas as pd
 import joblib
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, validator
 from typing import List, Optional
@@ -191,12 +192,8 @@ class PredictionRequest(BaseModel):
 
 
 class PredictionResponse(BaseModel):
-    """What the API returns after a successful prediction."""
-    prediction: float = Field(..., description="The predicted yield (hg/ha).")
-    predicted_yield_hg_per_ha: float = Field(
-        ...,
-        description="Same as `prediction` (kept for backwards compatibility).",
-    )
+    """Public response schema shown in OpenAPI/Swagger."""
+    prediction: float = Field(..., description="The predicted yield in hg/ha.")
     area: str
     item: str
     year: int
@@ -208,7 +205,6 @@ class PredictionResponse(BaseModel):
         schema_extra = {
             "example": {
                 "prediction": 51234.56,
-                "predicted_yield_hg_per_ha": 51234.56,
                 "area": "Rwanda",
                 "item": "Maize",
                 "year": 2020,
@@ -217,6 +213,11 @@ class PredictionResponse(BaseModel):
                 "timestamp": "2026-03-27T12:00:00",
             }
         }
+
+
+class ErrorResponse(BaseModel):
+    """Standard error format returned by this API."""
+    detail: str
 
 
 # ── Basic Endpoints ──────────────────────────────────────────────────────────
@@ -386,8 +387,11 @@ def _make_prediction(req: PredictionRequest) -> float:
     Encode the input, scale it, and run it through the model.
     Returns the predicted yield in hg/ha as a float.
     """
-    if not artifacts.model:
-        raise HTTPException(status_code=500, detail="Models are not loaded.")
+    if not artifacts.model or not artifacts.scaler or not artifacts.le_area or not artifacts.le_item:
+        raise HTTPException(
+            status_code=503,
+            detail="Model artifacts are not loaded yet. Try again in a moment.",
+        )
     try:
         # Convert country/crop strings to the numeric codes the model expects
         area_enc = artifacts.le_area.transform([req.area])[0]
@@ -416,7 +420,22 @@ def _make_prediction(req: PredictionRequest) -> float:
 
 # ── Prediction Endpoints ─────────────────────────────────────────────────────
 
-@app.post("/predict", response_model=PredictionResponse)
+@app.post(
+    "/predict",
+    response_model=PredictionResponse,
+    summary="Predict crop yield",
+    description=(
+        "Predicts crop yield (hg/ha) from location, crop type, and climate inputs. "
+        "The request is buffered for optional auto-retraining.\n\n"
+        "**Compatibility note:** the JSON response also includes "
+        "`predicted_yield_hg_per_ha` as a legacy alias of `prediction` for older clients."
+    ),
+    responses={
+        400: {"model": ErrorResponse, "description": "Bad request / prediction failed."},
+        422: {"description": "Validation error (invalid input)."},
+        503: {"model": ErrorResponse, "description": "Model is not loaded / unavailable."},
+    },
+)
 def predict(request: PredictionRequest, background_tasks: BackgroundTasks):
     """
     Main prediction endpoint.
@@ -442,16 +461,17 @@ def predict(request: PredictionRequest, background_tasks: BackgroundTasks):
     # Check if we've hit the threshold and should retrain
     auto_retrain_if_ready(background_tasks)
 
-    return PredictionResponse(
-        prediction=pred_val,
-        predicted_yield_hg_per_ha=pred_val,
-        area=request.area,
-        item=request.item,
-        year=request.year,
-        model_type="Random Forest",
-        model_r2_score=r2,
-        timestamp=datetime.datetime.now().isoformat()
-    )
+    payload = {
+        "prediction": pred_val,
+        "predicted_yield_hg_per_ha": pred_val,  # legacy alias for older clients
+        "area": request.area,
+        "item": request.item,
+        "year": request.year,
+        "model_type": "Random Forest",
+        "model_r2_score": r2,
+        "timestamp": datetime.datetime.now().isoformat(),
+    }
+    return JSONResponse(content=payload)
 
 
 class BatchPredictionRequest(BaseModel):
@@ -459,7 +479,22 @@ class BatchPredictionRequest(BaseModel):
     predictions: List[PredictionRequest]
 
 
-@app.post("/predict/batch", response_model=List[PredictionResponse])
+@app.post(
+    "/predict/batch",
+    response_model=List[PredictionResponse],
+    summary="Batch predict crop yield",
+    description=(
+        "Predicts yields for multiple inputs in a single request. "
+        "All predictions are buffered for optional auto-retraining.\n\n"
+        "**Compatibility note:** each item in the response also includes "
+        "`predicted_yield_hg_per_ha` as a legacy alias of `prediction`."
+    ),
+    responses={
+        400: {"model": ErrorResponse, "description": "Bad request / prediction failed."},
+        422: {"description": "Validation error (invalid input)."},
+        503: {"model": ErrorResponse, "description": "Model is not loaded / unavailable."},
+    },
+)
 def predict_batch(request: BatchPredictionRequest, background_tasks: BackgroundTasks):
     """
     Batch prediction endpoint — predict for multiple inputs at once.
@@ -483,18 +518,20 @@ def predict_batch(request: BatchPredictionRequest, background_tasks: BackgroundT
             "hg/ha_yield":                   pred_val
         })
 
-        responses.append(PredictionResponse(
-            prediction=pred_val,
-            predicted_yield_hg_per_ha=pred_val,
-            area=p.area, item=p.item, year=p.year,
-            model_type="Random Forest",
-            model_r2_score=r2,
-            timestamp=datetime.datetime.now().isoformat()
-        ))
+        responses.append({
+            "prediction": pred_val,
+            "predicted_yield_hg_per_ha": pred_val,  # legacy alias for older clients
+            "area": p.area,
+            "item": p.item,
+            "year": p.year,
+            "model_type": "Random Forest",
+            "model_r2_score": r2,
+            "timestamp": datetime.datetime.now().isoformat(),
+        })
 
     # Check auto-retrain after the whole batch is processed
     auto_retrain_if_ready(background_tasks)
-    return responses
+    return JSONResponse(content=responses)
 
 
 # ── Manual Retraining Endpoints ──────────────────────────────────────────────
