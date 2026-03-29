@@ -20,7 +20,7 @@ Test predictions via Swagger UI:
 ---
 
 ## Video Demo
-
+https://www.youtube.com/watch?v=40vJ9mrbK8I
 > 
 
 ---
